@@ -41,12 +41,12 @@ async function redactarGuion(textoCrudo, tituloIdea) {
     Texto a adaptar: ${textoCrudo}
     `;
 
-    const respuesta = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 2500,
-        temperature: 0.7,
-        messages: [{ role: "user", content: promptMaestro }]
-    });
+const respuesta = await anthropic.messages.create({
+    model: "claude-3-5-sonnet-20241022", // Nombre oficial para Sonnet 3.5
+    max_tokens: 2500,
+    temperature: 0.7,
+    messages: [{ role: "user", content: promptMaestro }]
+});
 
     return respuesta.content[0].text;
 }
