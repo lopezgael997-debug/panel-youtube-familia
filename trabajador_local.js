@@ -2,72 +2,68 @@ const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const path = require('path');
 
-// Le indicamos a la librería dónde está el motor FFmpeg instalado
+// Vinculamos el motor descargado
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 const urlNube = 'https://panel-youtube-familia.onrender.com/api/obtener-cola';
 
-// Función que ensambla el video
+// Función para ensamblar 1 solo video
 function renderizarVideo(titulo, archivoImagen, archivoAudio, archivoSalida) {
     return new Promise((resolve, reject) => {
-        console.log(`[FFmpeg] Iniciando renderizado de: ${archivoSalida}...`);
+        console.log(`\n[FFmpeg] 🎬 Iniciando renderizado: "${titulo}"`);
         
         ffmpeg()
-            // Entrada 1: La imagen (se repetirá en bucle)
             .input(archivoImagen)
             .loop() 
-            // Entrada 2: El audio
             .input(archivoAudio)
-            // Configuraciones de video
             .videoCodec('libx264')
             .audioCodec('aac')
-            // Forzar que el video dure exactamente lo mismo que el audio
             .outputOptions([
                 '-shortest',
                 '-pix_fmt yuv420p',
-                '-vf scale=1920:1080' // Escala a 1080p
+                '-vf scale=1920:1080' // Formato horizontal de YouTube
             ])
             .save(archivoSalida)
             .on('end', () => {
-                console.log(`[FFmpeg] ¡Video renderizado con éxito!: ${archivoSalida}`);
+                console.log(`[FFmpeg] ✅ Video completado: ${archivoSalida}`);
                 resolve();
             })
             .on('error', (err) => {
-                console.error('[FFmpeg] Error en el renderizado:', err);
+                console.error('[FFmpeg] ❌ Error en el renderizado:', err.message);
                 reject(err);
             });
     });
 }
 
-async function revisarTrabajoPendiente() {
+// Función principal: El Agente Capataz
+async function procesarCola() {
+    console.log('📡 Conectando con la nube para buscar trabajo...');
     try {
         const respuesta = await fetch(urlNube);
         const proyectos = await respuesta.json();
 
-        if (proyectos.length === 0) return;
+        // Si la familia no ha mandado nada, avisa y se cierra.
+        if (proyectos.length === 0) {
+            console.log('📭 La fila está vacía. No hay videos pendientes para renderizar.');
+            return;
+        }
 
-        console.log(`\n¡Se detectaron ${proyectos.length} proyectos nuevos en la nube!`);
+        console.log(`📦 ¡Se encontraron ${proyectos.length} proyectos pendientes!`);
         
-        // Procesamos solo el primero para esta prueba
-        const proyecto = proyectos[0];
-        console.log(`Procesando: ${proyecto.titulo}`);
-        
-        // Nombres de archivos locales
         const imagenLocal = path.join(__dirname, 'miniatura.jpg');
         const audioLocal = path.join(__dirname, 'audio.mp3');
-        // El nombre del video final sin espacios
-        const nombreVideoFinal = path.join(__dirname, `Video_${proyecto.id}.mp4`);
 
-        // Ejecutar el Agente Editor
-        await renderizarVideo(proyecto.titulo, imagenLocal, audioLocal, nombreVideoFinal);
+        // Bucle secuencial: Renderiza uno por uno para no colapsar la RTX 5070 Ti
+        for (const proyecto of proyectos) {
+            const nombreVideoFinal = path.join(__dirname, `Video_${proyecto.id}.mp4`);
+            await renderizarVideo(proyecto.titulo, imagenLocal, audioLocal, nombreVideoFinal);
+        }
 
-        console.log('--- Flujo terminado por ahora ---');
-        // NOTA: Aquí en el futuro le avisaremos a la nube que ya terminamos para que lo borre de la lista.
+        console.log('\n🎉 Toda la fila de trabajo ha sido procesada.');
 
     } catch (error) {
-        console.error('Error de conexión:', error);
+        console.error('❌ Error conectando con la nube:', error.message);
     }
 }
 
-// Para esta prueba, no usaremos el intervalo de 30 segundos, solo lo ejecutaremos una vez directo.
-revisarTrabajoPendiente();
+procesarCola();
