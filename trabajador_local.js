@@ -65,15 +65,23 @@ return guion;
 // --- AGENTE DE VOZ: Narra el guion con voz profesional ---
 async function generarAudio(texto, idProyecto) {
     console.log(`[Locutor] 🎙️ Entrando a la cabina para grabar la narración...`);
-    const rutaAudio = path.join(__dirname, `Narracion_${idProyecto}.mp3`);
+    const nombreArchivo = `Narracion_${idProyecto}.mp3`;
+    const rutaAudio = path.join(__dirname, nombreArchivo);
     
     try {
         const tts = new MsEdgeTTS();
-        // Configurar voz masculina de México en alta calidad
         await tts.setMetadata('es-MX-JorgeNeural', OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
         
-        // Generar y guardar el archivo MP3
-        await tts.toFile(rutaAudio, texto);
+        // Forzar la escritura correcta del archivo de audio
+        const audioStream = await tts.toStream(texto);
+        
+        // Guardar el flujo de datos directamente usando promesas de fs
+        const chunks = [];
+        for await (const chunk of audioStream) {
+            chunks.push(chunk);
+        }
+        const bufferAudio = Buffer.concat(chunks);
+        await fs.writeFile(rutaAudio, bufferAudio);
         
         console.log(`[Sistema] 🎧 Audio generado exitosamente en: ${rutaAudio}`);
         return rutaAudio;
