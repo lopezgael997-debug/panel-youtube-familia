@@ -1,0 +1,12 @@
+{
+  "name": "panel-youtube-familia",
+  "version": "1.0.0",
+  "description": "Panel de control para automatizar videos de misterio",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
