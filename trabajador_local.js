@@ -1,37 +1,73 @@
-// Este script corre en tu PC local, no en Render.
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegPath = require('ffmpeg-static');
+const path = require('path');
+
+// Le indicamos a la librería dónde está el motor FFmpeg instalado
+ffmpeg.setFfmpegPath(ffmpegPath);
+
 const urlNube = 'https://panel-youtube-familia.onrender.com/api/obtener-cola';
 
+// Función que ensambla el video
+function renderizarVideo(titulo, archivoImagen, archivoAudio, archivoSalida) {
+    return new Promise((resolve, reject) => {
+        console.log(`[FFmpeg] Iniciando renderizado de: ${archivoSalida}...`);
+        
+        ffmpeg()
+            // Entrada 1: La imagen (se repetirá en bucle)
+            .input(archivoImagen)
+            .loop() 
+            // Entrada 2: El audio
+            .input(archivoAudio)
+            // Configuraciones de video
+            .videoCodec('libx264')
+            .audioCodec('aac')
+            // Forzar que el video dure exactamente lo mismo que el audio
+            .outputOptions([
+                '-shortest',
+                '-pix_fmt yuv420p',
+                '-vf scale=1920:1080' // Escala a 1080p
+            ])
+            .save(archivoSalida)
+            .on('end', () => {
+                console.log(`[FFmpeg] ¡Video renderizado con éxito!: ${archivoSalida}`);
+                resolve();
+            })
+            .on('error', (err) => {
+                console.error('[FFmpeg] Error en el renderizado:', err);
+                reject(err);
+            });
+    });
+}
+
 async function revisarTrabajoPendiente() {
-    console.log('Conectando con Render para buscar nuevos videos...');
     try {
         const respuesta = await fetch(urlNube);
         const proyectos = await respuesta.json();
 
-        if (proyectos.length === 0) {
-            console.log('No hay videos en la cola. La familia aún no ha enviado nada.');
-            return;
-        }
+        if (proyectos.length === 0) return;
 
-        console.log(`¡Se encontraron ${proyectos.length} proyectos pendientes!`);
+        console.log(`\n¡Se detectaron ${proyectos.length} proyectos nuevos en la nube!`);
         
-        // Aquí es donde conectaremos a Claude y FFmpeg
-        proyectos.forEach(proyecto => {
-            console.log(`Iniciando producción de: ${proyecto.titulo}`);
-            console.log(`Descargando transcripción de: ${proyecto.url}`);
-            console.log(`Generando prompt para miniatura: ${proyecto.miniatura}`);
-            console.log('-----------------------------------');
-            
-            // Futuro código:
-            // 1. extraerSubtitulos(proyecto.url)
-            // 2. traducirYGuionizar(Claude)
-            // 3. renderizarVideo(FFmpeg)
-        });
+        // Procesamos solo el primero para esta prueba
+        const proyecto = proyectos[0];
+        console.log(`Procesando: ${proyecto.titulo}`);
+        
+        // Nombres de archivos locales
+        const imagenLocal = path.join(__dirname, 'miniatura.jpg');
+        const audioLocal = path.join(__dirname, 'audio.mp3');
+        // El nombre del video final sin espacios
+        const nombreVideoFinal = path.join(__dirname, `Video_${proyecto.id}.mp4`);
+
+        // Ejecutar el Agente Editor
+        await renderizarVideo(proyecto.titulo, imagenLocal, audioLocal, nombreVideoFinal);
+
+        console.log('--- Flujo terminado por ahora ---');
+        // NOTA: Aquí en el futuro le avisaremos a la nube que ya terminamos para que lo borre de la lista.
 
     } catch (error) {
-        console.error('Error al conectar con la nube:', error);
+        console.error('Error de conexión:', error);
     }
 }
 
-// Revisa si hay trabajo nuevo en la página cada 30 segundos
-setInterval(revisarTrabajoPendiente, 30000);
+// Para esta prueba, no usaremos el intervalo de 30 segundos, solo lo ejecutaremos una vez directo.
 revisarTrabajoPendiente();
