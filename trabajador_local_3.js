@@ -336,7 +336,7 @@ Responde con este JSON:
                 console.log(`[Guionista] ✍️ Escribiendo capítulo ${i + 1}/${total}: ${plan.capitulos[i].titulo}`);
                 const previo = escenas.slice(-2).map(e => e.narracion).join(' ');
                 return llamarClaude({
-                    nicho, contexto: await getContexto(), maxTokens: 4500,
+                    nicho, contexto: await getContexto(), maxTokens: 8192,
                     instruccion: `PLAN COMPLETO DEL VIDEO:
 ${JSON.stringify(plan.capitulos, null, 1)}
 
