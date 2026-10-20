@@ -15,16 +15,41 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // =====================================================================
 const CFG = {
     urlNube: process.env.URL_NUBE || 'https://panel-youtube-familia.onrender.com/api/obtener-cola',
-    urlCompletar: process.env.URL_COMPLETAR || '', // opcional: endpoint de tu panel para marcar "listo"
-    modelo: process.env.MODELO_CLAUDE || 'claude-sonnet-5-5', // para ahorrar: claude-haiku-5-5
-    pexelsKey: process.env.PEXELS_API_KEY || '',
+    urlCompletar: process.env.URL_COMPLETAR || '',
+    modelo: process.env.MODELO_CLAUDE || 'claude-sonnet-5-5',
     intervaloMin: Number(process.env.INTERVALO_MIN || 5),
-    maxCharsTranscripcion: 40000,
-    maxTokensGuion: 8000,
+
+    // Duración y shorts (el panel puede sobrescribirlos con proyecto.duracion y proyecto.shorts)
+    duracionMin: Number(process.env.DURACION_MIN || 10),
+    shortsPorVideo: Number(process.env.SHORTS_POR_VIDEO || 3),
+    palabrasPorMinuto: 145,     // ritmo aproximado de la voz
+    minutosPorCapitulo: 3,
+    maxCharsTranscripcion: 60000,
+
     fps: 30,
-    ancho: 1920,
-    alto: 1080,
-    pausaEscena: 0.35 // segundos de silencio al final de cada escena
+    pausaEscena: 0.35,
+    concurrenciaRender: Number(process.env.CONCURRENCIA_RENDER || 3),
+
+    imagen: {
+        proveedor: (process.env.IMAGEN_PROVEEDOR || 'comfyui').toLowerCase(), // comfyui | forge
+        comfyUrl: process.env.COMFY_URL || 'http://127.0.0.1:8188',
+        forgeUrl: process.env.FORGE_URL || 'http://127.0.0.1:7860',
+        checkpoint: process.env.COMFY_CHECKPOINT || '',
+        pasos: Number(process.env.IMAGEN_PASOS || 28),
+        cfg: Number(process.env.IMAGEN_CFG || 6.5),
+        negativo: 'text, letters, words, watermark, logo, signature, blurry, low quality, deformed, extra fingers, bad anatomy, modern clothing, cartoon'
+    }
+};
+
+const FORMATOS = {
+    horizontal: {
+        ancho: 1920, alto: 1080, imgAncho: 1344, imgAlto: 768,
+        fuente: 62, outline: 4, margenH: 120, margenV: 70, palabrasSub: 6, colorSub: '&H00FFFFFF'
+    },
+    vertical: {
+        ancho: 1080, alto: 1920, imgAncho: 768, imgAlto: 1344,
+        fuente: 84, outline: 5, margenH: 80, margenV: 560, palabrasSub: 4, colorSub: '&H0000FFFF'
+    }
 };
 
 const DIR = {
@@ -38,27 +63,31 @@ const DIR = {
     musica: path.join(__dirname, 'musica')
 };
 
-// Nichos: agrega los tuyos aquí. El panel debe enviar el campo "nicho" en cada proyecto.
+// Nichos: agrega los tuyos aquí. "estilo" se añade a cada imagen para mantener coherencia visual.
 const NICHOS = {
     misterio: {
         audiencia: 'personas mayores de 50 años de habla hispana, apasionadas por los misterios históricos, la arqueología prohibida y los enigmas sin resolver',
         tono: 'misterio, intriga y respeto, similar a los documentales clásicos',
-        voz: 'es-MX-JorgeNeural'
+        voz: 'es-MX-JorgeNeural',
+        estilo: 'cinematic dramatic lighting, moody atmosphere, volumetric fog, ancient, oil painting style, highly detailed, dark tones'
     },
     historia: {
         audiencia: 'adultos de habla hispana interesados en historia universal y grandes personajes',
         tono: 'narrativo, riguroso y apasionante, como un buen documental histórico',
-        voz: 'es-ES-AlvaroNeural'
+        voz: 'es-ES-AlvaroNeural',
+        estilo: 'epic historical painting, realistic, warm cinematic lighting, highly detailed, museum quality'
     },
     ciencia: {
         audiencia: 'público curioso de habla hispana que disfruta la divulgación científica',
         tono: 'claro, entusiasta y sorprendente, sin tecnicismos innecesarios',
-        voz: 'es-MX-DaliaNeural'
+        voz: 'es-MX-DaliaNeural',
+        estilo: 'clean cinematic illustration, vivid colors, dramatic lighting, highly detailed, sharp focus'
     }
 };
 const NICHO_POR_DEFECTO = 'misterio';
 
 let usarGPU = !process.env.FORZAR_CPU;
+const CLIENT_ID = crypto.randomUUID();
 
 // =====================================================================
 // UTILIDADES
@@ -89,9 +118,24 @@ function decodificarEntidades(t) {
         .replace(/\s+/g, ' ').trim();
 }
 
+// Ejecuta tareas asíncronas con un límite de concurrencia
+async function enParalelo(tareas, limite) {
+    const resultados = new Array(tareas.length);
+    let siguiente = 0;
+    async function obrero() {
+        while (true) {
+            const k = siguiente++;
+            if (k >= tareas.length) return;
+            resultados[k] = await tareas[k]();
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(limite, tareas.length) }, obrero));
+    return resultados;
+}
+
 function ejecutarFfmpeg(args, cwd) {
     return new Promise((resolve, reject) => {
-        const p = spawn(ffmpegPath, ['-hide_banner', '-y', ...args], { cwd: cwd || __dirname });
+        const p = spawn(ffmpegPath, ['-hide_banner', '-nostdin', '-loglevel', 'error', '-y', ...args], { cwd: cwd || __dirname });
         let err = '';
         p.stderr.on('data', d => { err += d.toString(); });
         p.on('error', reject);
@@ -103,7 +147,6 @@ function ejecutarFfmpeg(args, cwd) {
 }
 
 async function duracionAudio(ruta) {
-    // ffmpeg -i devuelve código 1 sin salida, pero imprime la duración en stderr
     const salida = await new Promise((resolve) => {
         const p = spawn(ffmpegPath, ['-hide_banner', '-i', ruta]);
         let err = '';
@@ -142,7 +185,6 @@ function argsCodecVideo() {
         : ['-c:v', 'libx264', '-preset', 'medium', '-crf', '20'];
 }
 
-// Ejecuta un render; si falla con GPU, reintenta una vez con CPU
 async function ejecutarRender(construirArgs, cwd) {
     try {
         await ejecutarFfmpeg(construirArgs(), cwd);
@@ -152,6 +194,17 @@ async function ejecutarRender(construirArgs, cwd) {
         usarGPU = false;
         await ejecutarFfmpeg(construirArgs(), cwd);
     }
+}
+
+function extraerJSON(crudo) {
+    const ini = crudo.indexOf('{');
+    const fin = crudo.lastIndexOf('}');
+    if (ini === -1 || fin === -1) throw new Error('La respuesta no contiene JSON.');
+    return JSON.parse(crudo.slice(ini, fin + 1));
+}
+
+function contarPalabras(texto) {
+    return texto.trim().split(/\s+/).filter(Boolean).length;
 }
 
 // =====================================================================
@@ -176,85 +229,167 @@ async function obtenerTranscripcion(url, idVideo) {
 }
 
 // =====================================================================
-// AGENTE GUIONISTA: Claude (con caché: nunca se paga dos veces)
+// AGENTE GUIONISTA: plan + capítulos + shorts (todo con caché)
 // =====================================================================
-function construirPrompt(nicho, titulo, texto) {
+function promptSistema(nicho) {
     return `Eres un guionista experto en YouTube. Tu audiencia son ${nicho.audiencia}.
+Escribes en español neutro con un tono de ${nicho.tono}.
+Reglas permanentes:
+- Reescribe con tus propias palabras; nunca copies frases del material original.
+- Elimina promociones, saludos y "paja" del youtuber original.
+- No inventes datos, fechas, cifras ni citas. Si el material no alcanza, completa con contexto histórico o científico ampliamente aceptado y presenta lo incierto como hipótesis ("según algunas teorías...").
+- La narración es SOLO texto para decir en voz alta: sin títulos, asteriscos ni acotaciones.
+- Los "prompt_imagen" van en INGLÉS, describen una escena visual concreta (lugar, objetos, luz, ambiente) en 20 a 40 palabras, sin texto ni letras en la imagen y sin rostros reconocibles de personas reales.
+Respondes ÚNICAMENTE con JSON válido, sin texto adicional ni bloques de código.`;
+}
 
-Toma esta transcripción cruda en inglés de un video y transfórmala en un guion ORIGINAL en español neutro, con un tono de ${nicho.tono}.
+async function llamarClaude({ nicho, contexto, instruccion, maxTokens }) {
+    const contenido = contexto ? [contexto, { type: 'text', text: instruccion }] : instruccion;
+    const respuesta = await anthropic.messages.create({
+        model: CFG.modelo,
+        max_tokens: maxTokens,
+        system: promptSistema(nicho),
+        messages: [{ role: 'user', content: contenido }]
+    });
+    const crudo = respuesta.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    if (!crudo) throw new Error(`Claude no devolvió texto (stop_reason: ${respuesta.stop_reason})`);
+    if (respuesta.stop_reason === 'max_tokens') console.log('[Guionista] ⚠️ Respuesta cortada por límite de tokens.');
+    const u = respuesta.usage || {};
+    console.log(`          (entrada: ${u.input_tokens || 0} tokens | leídos de caché: ${u.cache_read_input_tokens || 0} | salida: ${u.output_tokens || 0})`);
+    return crudo;
+}
 
-REGLAS:
-1. Empieza con un "Gancho" espectacular en los primeros 15 segundos para evitar que se vayan.
-2. Elimina toda la "paja", promociones o saludos del youtuber original. Ve directo a la historia.
-3. Reescribe con tus propias palabras y estructura; no copies frases del original.
-4. Divide el guion en entre 12 y 20 escenas. Cada escena tiene 2 a 4 oraciones de narración.
-5. La narración es SOLO texto para decir en voz alta: sin títulos, sin asteriscos, sin acotaciones.
-6. Para cada escena da una búsqueda de imagen de stock en INGLÉS (2 a 4 palabras, concreta y visual, p. ej. "ancient ship fog", "stone ruins sunset").
+// Lee de caché o genera y guarda ANTES de interpretar (así nunca se paga dos veces)
+async function jsonConCache(archivo, generar, validar) {
+    let crudo;
+    if (await existe(archivo)) {
+        crudo = await fs.readFile(archivo, 'utf-8');
+    } else {
+        crudo = await generar();
+        await fs.writeFile(archivo, crudo, 'utf-8');
+    }
+    try {
+        const datos = extraerJSON(crudo);
+        validar(datos);
+        return datos;
+    } catch (e) {
+        throw new Error(`${e.message} Corrige o borra este archivo: ${archivo}`);
+    }
+}
 
-Responde ÚNICAMENTE con JSON válido, sin texto antes ni después ni bloques de código, con esta forma:
+function validarEscenas(escenas) {
+    if (!Array.isArray(escenas) || escenas.length === 0) throw new Error('No hay escenas.');
+    for (const e of escenas) {
+        if (typeof e.narracion !== 'string' || !e.narracion.trim()) throw new Error('Hay una escena sin narración.');
+        e.prompt_imagen = e.prompt_imagen || 'mysterious ancient landscape, dramatic sky';
+    }
+}
+
+async function obtenerGuion(proyecto, nichoKey, idVideo, minutos) {
+    const nicho = NICHOS[nichoKey];
+    const clave = `${idVideo}_${nichoKey}_${minutos}m`;
+    const numCaps = Math.max(1, Math.round(minutos / CFG.minutosPorCapitulo));
+    const palabrasCap = Math.round((minutos * CFG.palabrasPorMinuto) / numCaps);
+
+    // El material de referencia se descarga solo si hace falta, y se marca para caché de prompt
+    let contexto = null;
+    const getContexto = async () => {
+        if (contexto) return contexto;
+        let texto = await obtenerTranscripcion(proyecto.url, idVideo);
+        if (texto.length > CFG.maxCharsTranscripcion) texto = texto.slice(0, CFG.maxCharsTranscripcion);
+        contexto = {
+            type: 'text',
+            text: `MATERIAL DE REFERENCIA (transcripción en inglés del video "${proyecto.titulo}"):\n${texto}`,
+            cache_control: { type: 'ephemeral' }
+        };
+        return contexto;
+    };
+
+    // --- 1) Plan ---
+    const plan = await jsonConCache(
+        path.join(DIR.guiones, `${clave}_plan.json`),
+        async () => {
+            console.log(`[Guionista] 🗺️ Planificando video de ${minutos} min en ${numCaps} capítulos (${CFG.modelo})...`);
+            return llamarClaude({
+                nicho, contexto: await getContexto(), maxTokens: 3000,
+                instruccion: `Planifica un video de ${minutos} minutos basado en el material de referencia, dividido en EXACTAMENTE ${numCaps} capítulos.
+El primer capítulo debe abrir con un gancho espectacular y el último cerrar de forma memorable.
+Responde con este JSON:
 {
   "titulo_youtube": "título atractivo en español",
   "descripcion": "descripción de 2 a 3 líneas",
   "etiquetas": ["etiqueta1", "etiqueta2"],
-  "escenas": [
-    { "narracion": "texto de la escena", "busqueda_imagen": "english keywords" }
-  ]
-}
+  "capitulos": [ { "titulo": "...", "resumen": "2 a 3 oraciones con los puntos que debe cubrir" } ]
+}`
+            });
+        },
+        (d) => { if (!Array.isArray(d.capitulos) || d.capitulos.length === 0) throw new Error('El plan no trae capítulos.'); }
+    );
 
-Video original de referencia: ${titulo}
-Texto a adaptar: ${texto}`;
-}
+    // --- 2) Capítulos ---
+    const escenas = [];
+    const total = plan.capitulos.length;
+    for (let i = 0; i < total; i++) {
+        const cap = await jsonConCache(
+            path.join(DIR.guiones, `${clave}_cap${String(i + 1).padStart(2, '0')}.json`),
+            async () => {
+                console.log(`[Guionista] ✍️ Escribiendo capítulo ${i + 1}/${total}: ${plan.capitulos[i].titulo}`);
+                const previo = escenas.slice(-2).map(e => e.narracion).join(' ');
+                return llamarClaude({
+                    nicho, contexto: await getContexto(), maxTokens: 4500,
+                    instruccion: `PLAN COMPLETO DEL VIDEO:
+${JSON.stringify(plan.capitulos, null, 1)}
 
-function parsearGuion(crudo) {
-    const ini = crudo.indexOf('{');
-    const fin = crudo.lastIndexOf('}');
-    if (ini === -1 || fin === -1) throw new Error('La respuesta de Claude no contiene JSON.');
-    const guion = JSON.parse(crudo.slice(ini, fin + 1));
-    if (!Array.isArray(guion.escenas) || guion.escenas.length === 0) {
-        throw new Error('El guion no trae escenas.');
+Escribe AHORA solo el capítulo ${i + 1} de ${total}: "${plan.capitulos[i].titulo}".
+- Longitud objetivo: unas ${palabrasCap} palabras de narración en total.
+- ${i === 0 ? 'Empieza con un gancho espectacular en los primeros 15 segundos.' : 'Continúa con naturalidad, sin saludar ni repetir la introducción. Termina del capítulo anterior: "' + previo + '"'}
+- ${i === total - 1 ? 'Este es el último capítulo: cierra de forma memorable.' : 'No cierres la historia: deja la tensión abierta para el siguiente capítulo.'}
+- Divide en escenas de 1 a 3 oraciones (30 a 50 palabras cada una).
+
+JSON:
+{ "escenas": [ { "narracion": "texto", "prompt_imagen": "english visual description" } ] }`
+                });
+            },
+            (d) => validarEscenas(d.escenas)
+        );
+        escenas.push(...cap.escenas);
     }
-    for (const e of guion.escenas) {
-        if (typeof e.narracion !== 'string' || !e.narracion.trim()) {
-            throw new Error('Hay una escena sin narración.');
+
+    const palabras = escenas.reduce((a, e) => a + contarPalabras(e.narracion), 0);
+    console.log(`[Guionista] 📜 ${escenas.length} escenas, ${palabras} palabras (≈ ${(palabras / CFG.palabrasPorMinuto).toFixed(1)} min).`);
+
+    return { titulo_youtube: plan.titulo_youtube, descripcion: plan.descripcion, etiquetas: plan.etiquetas, escenas, clave };
+}
+
+async function obtenerShorts(guion, nichoKey, cantidad) {
+    const nicho = NICHOS[nichoKey];
+    const datos = await jsonConCache(
+        path.join(DIR.guiones, `${guion.clave}_shorts${cantidad}.json`),
+        async () => {
+            console.log(`[Guionista] 📱 Escribiendo ${cantidad} shorts...`);
+            const narracion = guion.escenas.map(e => e.narracion).join('\n');
+            return llamarClaude({
+                nicho, contexto: null, maxTokens: 6000,
+                instruccion: `Este es el guion completo de un video largo:
+
+${narracion}
+
+Crea ${cantidad} guiones de YouTube Shorts (vertical), cada uno sobre un momento o dato DISTINTO y atractivo del video.
+Reglas:
+- Cada short dura unos 45 a 55 segundos (≈ 120 a 135 palabras en total).
+- Debe funcionar solo, sin haber visto el video: abre con un gancho fuerte en la primera frase y termina con una pregunta o invitación a ver el video completo.
+- Divide en 7 a 9 escenas de 14 a 20 palabras.
+
+JSON:
+{ "shorts": [ { "titulo": "título corto con gancho", "descripcion": "1 línea", "escenas": [ { "narracion": "texto", "prompt_imagen": "english visual description" } ] } ] }`
+            });
+        },
+        (d) => {
+            if (!Array.isArray(d.shorts) || d.shorts.length === 0) throw new Error('No hay shorts.');
+            d.shorts.forEach(s => validarEscenas(s.escenas));
         }
-        e.busqueda_imagen = e.busqueda_imagen || 'mystery landscape';
-    }
-    return guion;
-}
-
-async function obtenerGuion(proyecto, nichoKey, idVideo) {
-    const archivo = path.join(DIR.guiones, `${idVideo}_${nichoKey}.json`);
-    let crudo;
-
-    if (await existe(archivo)) {
-        console.log('[Guionista] ♻️ Guion ya existe en caché, reutilizando (0 créditos).');
-        crudo = await fs.readFile(archivo, 'utf-8');
-    } else {
-        let texto = await obtenerTranscripcion(proyecto.url, idVideo);
-        if (texto.length > CFG.maxCharsTranscripcion) texto = texto.slice(0, CFG.maxCharsTranscripcion);
-
-        console.log(`[Guionista] ✍️ Escribiendo guion con ${CFG.modelo} (nicho: ${nichoKey})...`);
-        const respuesta = await anthropic.messages.create({
-            model: CFG.modelo,
-            max_tokens: CFG.maxTokensGuion,
-            messages: [{ role: 'user', content: construirPrompt(NICHOS[nichoKey], proyecto.titulo, texto) }]
-        });
-
-        crudo = respuesta.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-        if (!crudo) throw new Error(`Claude no devolvió texto (stop_reason: ${respuesta.stop_reason})`);
-
-        // Se guarda ANTES de interpretarlo: aunque el JSON venga mal, no se vuelve a pagar
-        await fs.writeFile(archivo, crudo, 'utf-8');
-        if (respuesta.stop_reason === 'max_tokens') {
-            console.log('[Guionista] ⚠️ El guion llegó al límite de tokens y puede estar incompleto.');
-        }
-    }
-
-    try {
-        return parsearGuion(crudo);
-    } catch (e) {
-        throw new Error(`${e.message} Revisa o corrige a mano el archivo: ${archivo}`);
-    }
+    );
+    return datos.shorts.slice(0, cantidad);
 }
 
 // =====================================================================
@@ -293,68 +428,143 @@ async function audioDeEscena(texto, voz) {
 }
 
 // =====================================================================
-// AGENTE ARCHIVISTA: imágenes (Pexels + caché + respaldo)
+// AGENTE PINTOR: imágenes con IA en tu GPU (ComfyUI o Forge/A1111)
 // =====================================================================
-async function crearImagenRespaldo(destino) {
-    await ejecutarFfmpeg([
-        '-f', 'lavfi', '-i', `color=c=0x0d1117:s=${CFG.ancho}x${CFG.alto}`,
-        '-frames:v', '1', destino
-    ]);
+let imagenIAverificada = false;
+
+async function verificarImagenIA() {
+    if (imagenIAverificada) return;
+    const I = CFG.imagen;
+
+    if (I.proveedor === 'forge') {
+        try {
+            const r = await fetch(`${I.forgeUrl}/sdapi/v1/options`);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        } catch (e) {
+            throw new Error(`No se pudo conectar con Forge/A1111 en ${I.forgeUrl} (${e.message}). Ábrelo con el argumento --api.`);
+        }
+    } else {
+        let datos;
+        try {
+            const r = await fetch(`${I.comfyUrl}/object_info/CheckpointLoaderSimple`);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            datos = await r.json();
+        } catch (e) {
+            throw new Error(`No se pudo conectar con ComfyUI en ${I.comfyUrl} (${e.message}). Abre ComfyUI antes de ejecutar el worker.`);
+        }
+        const lista = datos?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
+        if (lista.length === 0) {
+            throw new Error('ComfyUI no tiene modelos. Copia un checkpoint SDXL (.safetensors) en ComfyUI/models/checkpoints y reinicia ComfyUI.');
+        }
+        if (!I.checkpoint) {
+            I.checkpoint = lista[0];
+            console.log(`[Pintor] ℹ️ COMFY_CHECKPOINT no definido, se usará: ${I.checkpoint}`);
+        } else if (!lista.includes(I.checkpoint)) {
+            throw new Error(`El checkpoint "${I.checkpoint}" no existe en ComfyUI. Disponibles: ${lista.join(', ')}`);
+        }
+    }
+    console.log(`[Pintor] 🟢 Generador de imágenes listo (${I.proveedor}).`);
+    imagenIAverificada = true;
 }
 
-async function imagenDeEscena(consulta, indice, usadas) {
-    const base = path.join(DIR.imagenes, hash(consulta + '|' + indice));
-    const archivo = `${base}.jpg`;
+async function imagenComfy(prompt, semilla, formato) {
+    const I = CFG.imagen;
+    const flujo = {
+        '3': { class_type: 'KSampler', inputs: { seed: semilla, steps: I.pasos, cfg: I.cfg, sampler_name: 'dpmpp_2m', scheduler: 'karras', denoise: 1, model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] } },
+        '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: I.checkpoint } },
+        '5': { class_type: 'EmptyLatentImage', inputs: { width: formato.imgAncho, height: formato.imgAlto, batch_size: 1 } },
+        '6': { class_type: 'CLIPTextEncode', inputs: { text: prompt, clip: ['4', 1] } },
+        '7': { class_type: 'CLIPTextEncode', inputs: { text: I.negativo, clip: ['4', 1] } },
+        '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },
+        '9': { class_type: 'PreviewImage', inputs: { images: ['8', 0] } }
+    };
+
+    const r = await fetch(`${I.comfyUrl}/prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: flujo, client_id: CLIENT_ID })
+    });
+    if (!r.ok) throw new Error(`ComfyUI rechazó el flujo: ${(await r.text()).slice(0, 300)}`);
+    const { prompt_id } = await r.json();
+
+    const limite = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < limite) {
+        await dormir(800);
+        const h = await (await fetch(`${I.comfyUrl}/history/${prompt_id}`)).json();
+        const item = h[prompt_id];
+        if (!item) continue;
+        if (item.status && item.status.status_str === 'error') throw new Error('ComfyUI reportó un error al generar.');
+        const img = Object.values(item.outputs || {}).flatMap(o => o.images || [])[0];
+        if (img) {
+            const v = await fetch(`${I.comfyUrl}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder || '')}&type=${encodeURIComponent(img.type || 'temp')}`);
+            if (!v.ok) throw new Error(`No se pudo descargar la imagen (HTTP ${v.status})`);
+            return Buffer.from(await v.arrayBuffer());
+        }
+    }
+    throw new Error('Tiempo agotado esperando a ComfyUI.');
+}
+
+async function imagenForge(prompt, semilla, formato) {
+    const I = CFG.imagen;
+    const r = await fetch(`${I.forgeUrl}/sdapi/v1/txt2img`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            prompt, negative_prompt: I.negativo, steps: I.pasos, cfg_scale: I.cfg,
+            width: formato.imgAncho, height: formato.imgAlto, seed: semilla, sampler_name: 'DPM++ 2M Karras'
+        })
+    });
+    if (!r.ok) throw new Error(`Forge respondió HTTP ${r.status}`);
+    const datos = await r.json();
+    if (!datos.images || !datos.images[0]) throw new Error('Forge no devolvió imagen.');
+    return Buffer.from(datos.images[0], 'base64');
+}
+
+async function generarImagen(promptEscena, nicho, formato) {
+    const I = CFG.imagen;
+    const prompt = `${promptEscena}, ${nicho.estilo}`;
+    const archivo = path.join(DIR.imagenes, `${hash([prompt, formato.imgAncho, formato.imgAlto, I.proveedor, I.checkpoint].join('|'))}.png`);
     if (await existe(archivo)) return archivo;
 
-    if (CFG.pexelsKey) {
+    const semilla = parseInt(hash(prompt).slice(0, 8), 16);
+    let ultimoError;
+    for (let intento = 1; intento <= 3; intento++) {
         try {
-            const r = await fetch(
-                `https://api.pexels.com/v1/search?query=${encodeURIComponent(consulta)}&orientation=landscape&per_page=8`,
-                { headers: { Authorization: CFG.pexelsKey } }
-            );
-            if (r.ok) {
-                const datos = await r.json();
-                const fotos = (datos.photos || []).filter(f => !usadas.has(f.id));
-                const foto = fotos[0] || (datos.photos || [])[0];
-                if (foto) {
-                    const img = await fetch(foto.src.large2x || foto.src.large);
-                    await fs.writeFile(archivo, Buffer.from(await img.arrayBuffer()));
-                    usadas.add(foto.id);
-                    return archivo;
-                }
-            }
+            const buffer = I.proveedor === 'forge'
+                ? await imagenForge(prompt, semilla, formato)
+                : await imagenComfy(prompt, semilla, formato);
+            await fs.writeFile(archivo, buffer);
+            return archivo;
         } catch (e) {
-            console.log(`[Archivista] ⚠️ Pexels falló para "${consulta}": ${e.message}`);
+            ultimoError = e;
+            console.log(`[Pintor] ⚠️ Intento ${intento}/3 falló: ${e.message}`);
+            await dormir(2000 * intento);
         }
-    } else if (indice === 0) {
-        console.log('[Archivista] ⚠️ No hay PEXELS_API_KEY en .env: se usarán fondos oscuros lisos.');
     }
-
-    const respaldo = path.join(DIR.imagenes, 'respaldo.png');
-    if (!(await existe(respaldo))) await crearImagenRespaldo(respaldo);
-    return respaldo;
+    throw new Error(`No se pudo generar la imagen: ${ultimoError.message}`);
 }
 
 // =====================================================================
-// AGENTE EDITOR: clips con zoom, subtítulos, música y render final
+// AGENTE EDITOR: clips, subtítulos, música y render final
 // =====================================================================
-async function renderizarEscena({ imagen, audio, duracion, indice, carpeta }) {
+async function renderizarEscena({ imagen, audio, duracion, indice, carpeta, formato }) {
     const nombre = `escena_${String(indice).padStart(3, '0')}.mp4`;
     const destino = path.join(carpeta, nombre);
-    if (await existe(destino)) return nombre; // reanuda si se cortó a mitad
+    if (await existe(destino)) return nombre;
 
+    const par = (n) => Math.round(n / 2) * 2;
+    const W = formato.ancho, H = formato.alto;
     const frames = Math.max(1, Math.round(duracion * CFG.fps));
     const paso = (0.18 / frames).toFixed(6);
     const zoom = indice % 2 === 0
-        ? `min(zoom+${paso},1.18)`                                   // acercamiento
-        : `if(eq(on,0),1.18,max(zoom-${paso},1.0))`;                 // alejamiento
-    const fade = 0.45;
+        ? `min(zoom+${paso},1.18)`
+        : `if(eq(on,0),1.18,max(zoom-${paso},1.0))`;
+    const fade = 0.4;
 
     const filtro = [
-        `scale=${CFG.ancho * 1.5}:${CFG.alto * 1.5}:force_original_aspect_ratio=increase`,
-        `crop=${CFG.ancho * 1.5}:${CFG.alto * 1.5}`,
-        `zoompan=z='${zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${CFG.ancho}x${CFG.alto}:fps=${CFG.fps}`,
+        `scale=${par(W * 1.4)}:${par(H * 1.4)}:force_original_aspect_ratio=increase`,
+        `crop=${par(W * 1.4)}:${par(H * 1.4)}`,
+        `zoompan=z='${zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${W}x${H}:fps=${CFG.fps}`,
         `fade=t=in:st=0:d=${fade}`,
         `fade=t=out:st=${Math.max(0, duracion - fade).toFixed(2)}:d=${fade}`,
         'format=yuv420p'
@@ -362,8 +572,7 @@ async function renderizarEscena({ imagen, audio, duracion, indice, carpeta }) {
 
     const temporal = path.join(carpeta, `tmp_${nombre}`);
     await ejecutarRender(() => [
-        '-i', imagen,
-        '-i', audio,
+        '-i', imagen, '-i', audio,
         '-vf', filtro,
         '-af', 'apad',
         '-t', duracion.toFixed(3),
@@ -384,15 +593,15 @@ function formatoTiempoAss(seg) {
     return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`;
 }
 
-function generarSubtitulosAss(escenas) {
+function generarSubtitulosAss(escenas, formato) {
     const cabecera = `[Script Info]
 ScriptType: v4.00+
-PlayResX: ${CFG.ancho}
-PlayResY: ${CFG.alto}
+PlayResX: ${formato.ancho}
+PlayResY: ${formato.alto}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,62,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,1,2,120,120,70,1
+Style: Default,Arial,${formato.fuente},${formato.colorSub},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,${formato.outline},1,2,${formato.margenH},${formato.margenH},${formato.margenV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -403,8 +612,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for (const esc of escenas) {
         const palabras = esc.narracion.replace(/\s+/g, ' ').trim().split(' ');
         const trozos = [];
-        for (let i = 0; i < palabras.length; i += 6) trozos.push(palabras.slice(i, i + 6).join(' '));
-
+        for (let i = 0; i < palabras.length; i += formato.palabrasSub) {
+            trozos.push(palabras.slice(i, i + formato.palabrasSub).join(' '));
+        }
         const totalCaracteres = trozos.reduce((a, t) => a + t.length, 0);
         const tiempoVoz = esc.duracion - CFG.pausaEscena;
         let t = inicioEscena;
@@ -424,23 +634,18 @@ async function elegirMusica(nichoKey) {
     for (const carpeta of [path.join(DIR.musica, nichoKey), DIR.musica]) {
         try {
             const archivos = (await fs.readdir(carpeta)).filter(f => /\.(mp3|wav|m4a|ogg)$/i.test(f));
-            if (archivos.length) {
-                return path.join(carpeta, archivos[Math.floor(Math.random() * archivos.length)]);
-            }
+            if (archivos.length) return path.join(carpeta, archivos[Math.floor(Math.random() * archivos.length)]);
         } catch { /* la carpeta no existe */ }
     }
     return null;
 }
 
-async function ensamblarVideo({ clips, escenas, carpeta, nichoKey, destinoFinal }) {
-    // 1) Unir clips (mismo códec: se copian sin recodificar)
+async function ensamblarVideo({ clips, escenas, carpeta, nichoKey, destinoFinal, formato }) {
     await fs.writeFile(path.join(carpeta, 'lista.txt'), clips.map(c => `file '${c}'`).join('\n'), 'utf-8');
     await ejecutarFfmpeg(['-f', 'concat', '-safe', '0', '-i', 'lista.txt', '-c', 'copy', 'union.mp4'], carpeta);
 
-    // 2) Subtítulos + música de fondo + render final
-    await fs.writeFile(path.join(carpeta, 'subs.ass'), generarSubtitulosAss(escenas), 'utf-8');
+    await fs.writeFile(path.join(carpeta, 'subs.ass'), generarSubtitulosAss(escenas, formato), 'utf-8');
     const musica = await elegirMusica(nichoKey);
-    const temporal = path.join(carpeta, 'final.mp4');
 
     if (musica) {
         console.log(`[Editor] 🎵 Música de fondo: ${path.basename(musica)}`);
@@ -456,7 +661,6 @@ async function ensamblarVideo({ clips, escenas, carpeta, nichoKey, destinoFinal 
             'final.mp4'
         ], carpeta);
     } else {
-        console.log('[Editor] ℹ️ Sin música: pon archivos .mp3 en la carpeta "musica" para añadirla.');
         await ejecutarRender(() => [
             '-i', 'union.mp4',
             '-vf', 'subtitles=subs.ass',
@@ -466,24 +670,57 @@ async function ensamblarVideo({ clips, escenas, carpeta, nichoKey, destinoFinal 
             'final.mp4'
         ], carpeta);
     }
-    await fs.copyFile(temporal, destinoFinal);
+    await fs.copyFile(path.join(carpeta, 'final.mp4'), destinoFinal);
+}
+
+// Produce una pieza completa (video largo o short) a partir de sus escenas
+async function producirPieza({ etiqueta, escenas, formato, nicho, nichoKey, carpeta, destinoFinal }) {
+    await fs.mkdir(carpeta, { recursive: true });
+    const total = escenas.length;
+
+    // 1) Voz (en paralelo moderado)
+    console.log(`[Locutor] 🎙️ ${etiqueta}: grabando ${total} escenas...`);
+    const audios = await enParalelo(escenas.map(e => async () => {
+        const audio = await audioDeEscena(e.narracion, nicho.voz);
+        e.duracion = (await duracionAudio(audio)) + CFG.pausaEscena;
+        return audio;
+    }), 2);
+    const segundos = escenas.reduce((a, e) => a + e.duracion, 0);
+    console.log(`[Locutor] ⏱️ Duración real de la narración: ${(segundos / 60).toFixed(1)} min`);
+
+    // 2) Imágenes con IA (una a una: la GPU hace una a la vez)
+    const imagenes = [];
+    for (let i = 0; i < total; i++) {
+        console.log(`[Pintor] 🎨 ${etiqueta}: imagen ${i + 1}/${total}`);
+        imagenes.push(await generarImagen(escenas[i].prompt_imagen, nicho, formato));
+    }
+
+    // 3) Clips en paralelo
+    let hechos = 0;
+    const clips = await enParalelo(escenas.map((e, i) => async () => {
+        const clip = await renderizarEscena({ imagen: imagenes[i], audio: audios[i], duracion: e.duracion, indice: i, carpeta, formato });
+        hechos++;
+        if (hechos % 10 === 0 || hechos === total) console.log(`[Editor] 🎬 ${etiqueta}: clips ${hechos}/${total}`);
+        return clip;
+    }), CFG.concurrenciaRender);
+
+    // 4) Ensamblado
+    console.log(`[Editor] 🎞️ ${etiqueta}: ensamblando...`);
+    await ensamblarVideo({ clips, escenas, carpeta, nichoKey, destinoFinal, formato });
+    await fs.rm(carpeta, { recursive: true, force: true });
+    console.log(`[Sistema] ✅ ${etiqueta} listo: ${destinoFinal}`);
 }
 
 // =====================================================================
 // AGENTE CAPATAZ
 // =====================================================================
-async function notificarNube(proyecto, rutaVideo, guion) {
+async function notificarNube(proyecto, archivos, guion) {
     if (!CFG.urlCompletar) return;
     try {
         await fetch(CFG.urlCompletar, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: proyecto.id,
-                estado: 'listo',
-                archivo: rutaVideo,
-                titulo_youtube: guion.titulo_youtube
-            })
+            body: JSON.stringify({ id: proyecto.id, estado: 'listo', archivos, titulo_youtube: guion.titulo_youtube })
         });
     } catch (e) {
         console.log(`[Sistema] ⚠️ No se pudo avisar a la nube: ${e.message}`);
@@ -499,45 +736,67 @@ async function producirVideo(proyecto) {
     }
     const nicho = NICHOS[nichoKey];
 
-    const destinoFinal = path.join(DIR.salida, `Video_${proyecto.id}.mp4`);
-    if (await existe(destinoFinal)) {
-        console.log(`[Sistema] ✅ Este video ya fue producido: ${destinoFinal}`);
+    const minutos = Math.min(60, Math.max(1, Number(proyecto.duracion) || CFG.duracionMin));
+    const cantidadShorts = proyecto.shorts !== undefined && proyecto.shorts !== null
+        ? Math.max(0, Math.min(10, Number(proyecto.shorts) || 0))
+        : CFG.shortsPorVideo;
+
+    const rutaVideo = path.join(DIR.salida, `Video_${proyecto.id}.mp4`);
+    const rutaShort = (n) => path.join(DIR.salida, `Short_${proyecto.id}_${n}.mp4`);
+
+    const videoListo = await existe(rutaVideo);
+    let shortsListos = true;
+    for (let n = 1; n <= cantidadShorts; n++) if (!(await existe(rutaShort(n)))) shortsListos = false;
+
+    if (videoListo && shortsListos) {
+        console.log(`[Sistema] ✅ Este proyecto ya fue producido por completo.`);
         return;
     }
 
-    // Paso 1-2: guion (caché o Claude)
-    const guion = await obtenerGuion(proyecto, nichoKey, idVideo);
-    await fs.writeFile(
-        path.join(DIR.salida, `Video_${proyecto.id}.json`),
-        JSON.stringify({ titulo: guion.titulo_youtube, descripcion: guion.descripcion, etiquetas: guion.etiquetas }, null, 2),
-        'utf-8'
-    );
-    console.log(`[Guionista] 📜 ${guion.escenas.length} escenas listas. Título: ${guion.titulo_youtube}`);
+    await verificarImagenIA();
 
-    // Paso 3: voz + imágenes + clips por escena
-    const carpeta = path.join(DIR.trabajo, String(proyecto.id));
-    await fs.mkdir(carpeta, { recursive: true });
-    const usadas = new Set();
-    const clips = [];
+    console.log(`[Sistema] 🎯 Nicho: ${nichoKey} | Duración objetivo: ${minutos} min | Shorts: ${cantidadShorts}`);
+    const guion = await obtenerGuion(proyecto, nichoKey, idVideo, minutos);
+    const archivos = [];
 
-    for (let i = 0; i < guion.escenas.length; i++) {
-        const esc = guion.escenas[i];
-        console.log(`[Editor] 🎬 Escena ${i + 1}/${guion.escenas.length}`);
+    // --- Video largo ---
+    if (!videoListo) {
+        await fs.writeFile(
+            path.join(DIR.salida, `Video_${proyecto.id}.json`),
+            JSON.stringify({ titulo: guion.titulo_youtube, descripcion: guion.descripcion, etiquetas: guion.etiquetas }, null, 2),
+            'utf-8'
+        );
+        await producirPieza({
+            etiqueta: 'Video', escenas: guion.escenas, formato: FORMATOS.horizontal,
+            nicho, nichoKey, carpeta: path.join(DIR.trabajo, String(proyecto.id)), destinoFinal: rutaVideo
+        });
+    }
+    archivos.push(rutaVideo);
 
-        const audio = await audioDeEscena(esc.narracion, nicho.voz);
-        esc.duracion = (await duracionAudio(audio)) + CFG.pausaEscena;
-        const imagen = await imagenDeEscena(esc.busqueda_imagen, i, usadas);
-
-        clips.push(await renderizarEscena({ imagen, audio, duracion: esc.duracion, indice: i, carpeta }));
+    // --- Shorts verticales ---
+    if (cantidadShorts > 0) {
+        const shorts = await obtenerShorts(guion, nichoKey, cantidadShorts);
+        for (let n = 1; n <= shorts.length; n++) {
+            if (await existe(rutaShort(n))) { archivos.push(rutaShort(n)); continue; }
+            const s = shorts[n - 1];
+            try {
+                await fs.writeFile(
+                    path.join(DIR.salida, `Short_${proyecto.id}_${n}.json`),
+                    JSON.stringify({ titulo: s.titulo, descripcion: s.descripcion }, null, 2),
+                    'utf-8'
+                );
+                await producirPieza({
+                    etiqueta: `Short ${n}`, escenas: s.escenas, formato: FORMATOS.vertical,
+                    nicho, nichoKey, carpeta: path.join(DIR.trabajo, `${proyecto.id}_short${n}`), destinoFinal: rutaShort(n)
+                });
+                archivos.push(rutaShort(n));
+            } catch (e) {
+                console.error(`❌ Falló el Short ${n}:`, e.message);
+            }
+        }
     }
 
-    // Paso 4: ensamblado final
-    console.log('[Editor] 🎞️ Ensamblando video final...');
-    await ensamblarVideo({ clips, escenas: guion.escenas, carpeta, nichoKey, destinoFinal });
-    await fs.rm(carpeta, { recursive: true, force: true });
-
-    console.log(`[Sistema] 🎉 Video listo: ${destinoFinal}`);
-    await notificarNube(proyecto, destinoFinal, guion);
+    await notificarNube(proyecto, archivos, guion);
 }
 
 async function procesarCola() {
