@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 const { YoutubeTranscript } = require('youtube-transcript');
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs').promises;
@@ -61,6 +62,27 @@ return guion;
 
 }
 
+// --- AGENTE DE VOZ: Narra el guion con voz profesional ---
+async function generarAudio(texto, idProyecto) {
+    console.log(`[Locutor] 🎙️ Entrando a la cabina para grabar la narración...`);
+    const rutaAudio = path.join(__dirname, `Narracion_${idProyecto}.mp3`);
+    
+    try {
+        const tts = new MsEdgeTTS();
+        // Configurar voz masculina de México en alta calidad
+        await tts.setMetadata('es-MX-JorgeNeural', OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+        
+        // Generar y guardar el archivo MP3
+        await tts.toFile(rutaAudio, texto);
+        
+        console.log(`[Sistema] 🎧 Audio generado exitosamente en: ${rutaAudio}`);
+        return rutaAudio;
+    } catch (error) {
+        console.error('[Locutor] ❌ Error en la grabación:', error.message);
+        throw error;
+    }
+}
+
 // --- AGENTE CAPATAZ: Coordina todo el trabajo ---
 async function procesarCola() {
     console.log('📡 Conectando con la nube para buscar trabajo...');
@@ -86,10 +108,15 @@ async function procesarCola() {
                 // Paso 2: Redactar
                 const guionEspanol = await redactarGuion(textoIngles, proyecto.titulo);
                 
-                // Paso 3: Guardar guion en disco duro
-                const rutaGuion = path.join(__dirname, `Guion_${proyecto.id}.txt`);
-                await fs.writeFile(rutaGuion, guionEspanol, 'utf-8');
-                console.log(`[Sistema] 💾 Guion guardado exitosamente en: ${rutaGuion}`);
+		// Paso 3: Guardar guion en disco duro
+            const rutaGuion = path.join(__dirname, `Guion_${proyecto.id}.txt`);
+            await fs.writeFile(rutaGuion, guionEspanol, 'utf-8');
+            console.log(`[Sistema] 💾 Guion guardado exitosamente en: ${rutaGuion}`);
+            
+            // Paso 4: Generar la voz
+            const rutaAudio = await generarAudio(guionEspanol, proyecto.id);
+                
+                // Siguiente paso: Renderizado de video...
                 
                 // Nota: El renderizado de video está pausado temporalmente 
                 // hasta que integremos el Agente de Voz (XTTSv2) en el siguiente paso.
