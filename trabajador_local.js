@@ -42,7 +42,7 @@ async function redactarGuion(textoCrudo, tituloIdea) {
     `;
 
     const respuesta = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: "claude-3-5-sonnet-20240620",
         max_tokens: 2500,
         temperature: 0.7,
         messages: [{ role: "user", content: promptMaestro }]
