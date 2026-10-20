@@ -42,13 +42,23 @@ async function redactarGuion(textoCrudo, tituloIdea) {
     `;
 
 const respuesta = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 2500,
-    temperature: 0.7,
+    model: "claude-sonnet-5-5",
+    max_tokens: 4000,
     messages: [{ role: "user", content: promptMaestro }]
 });
 
-    return respuesta.content[0].text;
+  const guion = respuesta.content
+    .filter(bloque => bloque.type === 'text')
+    .map(bloque => bloque.text)
+    .join('\n');
+
+if (!guion) {
+    console.log('Respuesta completa de la API:', JSON.stringify(respuesta, null, 2));
+    throw new Error(`Claude no devolvió texto (stop_reason: ${respuesta.stop_reason})`);
+}
+
+return guion;
+
 }
 
 // --- AGENTE CAPATAZ: Coordina todo el trabajo ---
