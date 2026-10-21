@@ -3,190 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estudio Autónomo | Enigmas Históricos</title>
+    <title>Panel de Producción | Documentales</title>
     <style>
         :root {
-            --bg-color: #0f172a;
-            --panel-bg: #1e293b;
-            --primary: #38bdf8;
-            --primary-hover: #0284c7;
+            --bg-dark: #0f172a;
+            --surface: #1e293b;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
             --border: #334155;
+            --accent: #10b981;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        
+        body { background-color: var(--bg-dark); color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 2rem; }
 
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            background-color: var(--panel-bg);
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        .dashboard-card {
+            background-color: var(--surface);
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             width: 100%;
-            max-width: 500px;
+            max-width: 600px;
             border: 1px solid var(--border);
         }
 
-        h1 {
-            font-size: 24px;
-            margin-bottom: 8px;
-            text-align: center;
-            color: var(--primary);
+        .header h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #fff; }
+        .header p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2rem; }
+
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: #cbd5e1; }
+        
+        input[type="text"], input[type="url"], select {
+            width: 100%; padding: 0.875rem; border-radius: 8px; border: 1px solid var(--border);
+            background-color: var(--bg-dark); color: #fff; font-size: 1rem; transition: border-color 0.2s;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--primary); }
+
+        .slider-container {
+            display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+            background-color: var(--bg-dark); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);
         }
 
-        p.subtitle {
-            text-align: center;
-            color: var(--text-muted);
-            font-size: 14px;
-            margin-bottom: 30px;
-        }
+        input[type="range"] { flex-grow: 1; accent-color: var(--primary); }
+        .val-display { background: var(--primary); padding: 0.25rem 0.75rem; border-radius: 6px; font-weight: bold; font-size: 0.9rem; min-width: 60px; text-align: center; }
 
-        .form-group {
-            margin-bottom: 20px;
+        .submit-btn {
+            width: 100%; padding: 1rem; margin-top: 1rem; background-color: var(--primary);
+            color: #fff; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold;
+            cursor: pointer; transition: background-color 0.2s, transform 0.1s;
         }
+        .submit-btn:hover { background-color: var(--primary-hover); }
+        .submit-btn:active { transform: scale(0.98); }
 
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-muted);
-        }
-
-        input[type="text"], input[type="url"] {
-            width: 100%;
-            padding: 12px;
-            background-color: var(--bg-color);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-main);
-            font-size: 15px;
-            transition: border-color 0.3s;
-        }
-
-        input[type="text"]:focus, input[type="url"]:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        button {
-            width: 100%;
-            padding: 14px;
-            background-color: var(--primary);
-            color: #fff;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.3s, transform 0.1s;
-            margin-top: 10px;
-        }
-
-        button:hover {
-            background-color: var(--primary-hover);
-        }
-
-        button:active {
-            transform: scale(0.98);
-        }
-
-        #status-message {
-            margin-top: 20px;
-            padding: 12px;
-            border-radius: 8px;
-            text-align: center;
-            font-size: 14px;
-            display: none;
-        }
-
-        .success { background-color: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #059669; }
-        .error { background-color: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #b91c1c; }
+        .status { margin-top: 1rem; text-align: center; font-size: 0.9rem; display: none; }
+        .status.success { color: var(--accent); display: block; }
+        .status.error { color: #ef4444; display: block; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1>Centro de Producción</h1>
-        <p class="subtitle">Ingresa la referencia para generar el próximo video.</p>
+    <div class="dashboard-card">
+        <div class="header">
+            <h1>Configuración de Proyecto</h1>
+            <p>Ajusta los parámetros para la generación automática en el servidor.</p>
+        </div>
 
-        <form id="videoForm">
+        <form id="produccionForm">
             <div class="form-group">
-                <label for="titulo">Título Sugerido (Clickbait)</label>
-                <input type="text" id="titulo" placeholder="Ej: El misterio oculto del SS Waratah..." required>
+                <label for="titulo">Título del Proyecto</label>
+                <input type="text" id="titulo" placeholder="Ej: El misterio de la ciudad perdida" required>
             </div>
 
             <div class="form-group">
-                <label for="url">Enlace del Video Viral (Inglés)</label>
+                <label for="url">URL de Referencia (YouTube)</label>
                 <input type="url" id="url" placeholder="https://youtube.com/watch?v=..." required>
             </div>
 
             <div class="form-group">
-                <label for="miniatura">Idea para la Miniatura</label>
-                <input type="text" id="miniatura" placeholder="Ej: Barco oxidado en el fondo del mar oscuro" required>
+                <label for="nicho">Nicho Visual</label>
+                <select id="nicho">
+                    <option value="misterio">Misterio (Oscuro, Cinematográfico)</option>
+                    <option value="historia">Historia (Óleo, Clásico)</option>
+                    <option value="ciencia">Ciencia (Nítido, Iluminado)</option>
+                </select>
             </div>
 
-            <button type="submit">Enviar a la Cola de Renderizado</button>
-        </form>
+            <div class="form-group">
+                <label>Duración Objetivo (Minutos)</label>
+                <div class="slider-container">
+                    <input type="range" id="duracion" min="1" max="60" value="10" oninput="updateVal('duracionVal', this.value)">
+                    <span class="val-display" id="duracionVal">10 min</span>
+                </div>
+            </div>
 
-        <div id="status-message"></div>
+            <div class="form-group">
+                <label>Cantidad de Shorts Extra</label>
+                <div class="slider-container">
+                    <input type="range" id="shorts" min="0" max="10" value="3" oninput="updateVal('shortsVal', this.value)">
+                    <span class="val-display" id="shortsVal">3</span>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="btnSubmit">Añadir a la Cola de Renderizado</button>
+            <div id="statusMsg" class="status"></div>
+        </form>
     </div>
 
     <script>
-        document.getElementById('videoForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const btn = e.target.querySelector('button');
-            const statusBox = document.getElementById('status-message');
-            btn.textContent = 'Enviando...';
-            btn.disabled = true;
+        function updateVal(elementId, value) {
+            const suffix = elementId === 'duracionVal' ? ' min' : '';
+            document.getElementById(elementId).innerText = value + suffix;
+        }
 
-            const datos = {
+        document.getElementById('produccionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btnSubmit');
+            const status = document.getElementById('statusMsg');
+            
+            btn.innerText = 'Enviando...';
+            btn.disabled = true;
+            status.className = 'status';
+
+            const payload = {
                 titulo: document.getElementById('titulo').value,
                 url: document.getElementById('url').value,
-                miniatura: document.getElementById('miniatura').value
+                nicho: document.getElementById('nicho').value,
+                duracion: parseInt(document.getElementById('duracion').value),
+                shorts: parseInt(document.getElementById('shorts').value)
             };
 
             try {
-                const response = await fetch('/api/nuevo-video', {
+                // Reemplaza con la URL real de tu API en Render o servidor local
+                const response = await fetch('https://tu-api.onrender.com/api/encolar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(datos)
+                    body: JSON.stringify(payload)
                 });
 
-                const resultado = await response.json();
-
                 if (response.ok) {
-                    statusBox.textContent = resultado.mensaje;
-                    statusBox.className = 'success';
-                    e.target.reset();
+                    status.innerText = '¡Proyecto añadido exitosamente a la cola!';
+                    status.className = 'status success';
+                    document.getElementById('produccionForm').reset();
+                    updateVal('duracionVal', '10');
+                    updateVal('shortsVal', '3');
                 } else {
-                    throw new Error(resultado.error || 'Error desconocido');
+                    throw new Error('Error en el servidor');
                 }
             } catch (error) {
-                statusBox.textContent = 'Error: ' + error.message;
-                statusBox.className = 'error';
+                status.innerText = 'Error al conectar con la base de datos.';
+                status.className = 'status error';
             } finally {
-                statusBox.style.display = 'block';
-                btn.textContent = 'Enviar a la Cola de Renderizado';
+                btn.innerText = 'Añadir a la Cola de Renderizado';
                 btn.disabled = false;
-                
-                setTimeout(() => { statusBox.style.display = 'none'; }, 5000);
             }
         });
     </script>
