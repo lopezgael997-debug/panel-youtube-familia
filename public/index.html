@@ -14,29 +14,36 @@
             --text-muted: #94a3b8;
             --border: #334155;
             --accent: #10b981;
+            --warn: #f59e0b;
+            --danger: #ef4444;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
-        
-        body { background-color: var(--bg-dark); color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 2rem; }
+
+        body {
+            background-color: var(--bg-dark); color: var(--text-main);
+            display: flex; flex-direction: column; align-items: center; gap: 1.5rem;
+            min-height: 100vh; padding: 2rem 1rem;
+        }
 
         .dashboard-card {
             background-color: var(--surface);
-            padding: 2.5rem;
+            padding: 2rem;
             border-radius: 16px;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             width: 100%;
-            max-width: 600px;
+            max-width: 680px;
             border: 1px solid var(--border);
         }
 
-        .header h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #fff; }
-        .header p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2rem; }
+        .header h1 { font-size: 1.6rem; margin-bottom: 0.5rem; color: #fff; }
+        .header p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem; }
 
-        .form-group { margin-bottom: 1.5rem; }
+        .form-group { margin-bottom: 1.25rem; }
         .form-group label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: #cbd5e1; }
-        
-        input[type="text"], input[type="url"], select {
+        .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.4rem; }
+
+        input[type="text"], input[type="url"], input[type="password"], select {
             width: 100%; padding: 0.875rem; border-radius: 8px; border: 1px solid var(--border);
             background-color: var(--bg-dark); color: #fff; font-size: 1rem; transition: border-color 0.2s;
         }
@@ -46,35 +53,64 @@
             display: flex; align-items: center; justify-content: space-between; gap: 1rem;
             background-color: var(--bg-dark); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);
         }
-
         input[type="range"] { flex-grow: 1; accent-color: var(--primary); }
-        .val-display { background: var(--primary); padding: 0.25rem 0.75rem; border-radius: 6px; font-weight: bold; font-size: 0.9rem; min-width: 60px; text-align: center; }
+        .val-display { background: var(--primary); padding: 0.25rem 0.75rem; border-radius: 6px; font-weight: bold; font-size: 0.9rem; min-width: 64px; text-align: center; }
 
         .submit-btn {
-            width: 100%; padding: 1rem; margin-top: 1rem; background-color: var(--primary);
-            color: #fff; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold;
+            width: 100%; padding: 1rem; margin-top: 0.5rem; background-color: var(--primary);
+            color: #fff; border: none; border-radius: 8px; font-size: 1.05rem; font-weight: bold;
             cursor: pointer; transition: background-color 0.2s, transform 0.1s;
         }
         .submit-btn:hover { background-color: var(--primary-hover); }
         .submit-btn:active { transform: scale(0.98); }
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .status { margin-top: 1rem; text-align: center; font-size: 0.9rem; display: none; }
         .status.success { color: var(--accent); display: block; }
-        .status.error { color: #ef4444; display: block; }
+        .status.error { color: var(--danger); display: block; }
+        .status.info { color: var(--text-muted); display: block; }
+
+        .list-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .list-title h2 { font-size: 1.2rem; }
+        .link-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+        .link-btn:hover { color: #fff; border-color: var(--primary); }
+
+        .proyecto { border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 0.75rem; background: var(--bg-dark); }
+        .proyecto-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; }
+        .proyecto-cab strong { font-size: 0.98rem; word-break: break-word; }
+        .meta { color: var(--text-muted); font-size: 0.82rem; margin-top: 0.35rem; }
+        .mensaje { font-size: 0.85rem; margin-top: 0.5rem; color: #cbd5e1; word-break: break-word; }
+        .barra { height: 6px; background: var(--border); border-radius: 4px; margin-top: 0.6rem; overflow: hidden; }
+        .relleno { height: 100%; background: var(--primary); transition: width 0.5s; }
+        .acciones { margin-top: 0.6rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .acciones a { color: var(--primary); font-size: 0.85rem; }
+
+        .badge { font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 999px; white-space: nowrap; }
+        .badge.pendiente { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
+        .badge.produciendo { background: rgba(59, 130, 246, 0.18); color: var(--primary); }
+        .badge.listo { background: rgba(16, 185, 129, 0.15); color: var(--accent); }
+        .badge.error { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+
+        .vacio { color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1rem 0; }
     </style>
 </head>
 <body>
 
     <div class="dashboard-card">
         <div class="header">
-            <h1>Configuración de Proyecto</h1>
-            <p>Ajusta los parámetros para la generación automática en el servidor.</p>
+            <h1>Nuevo Proyecto</h1>
+            <p>Elige el canal, la duración y los shorts. La PC de producción hace el resto.</p>
         </div>
 
         <form id="produccionForm">
             <div class="form-group">
+                <label for="clave">Clave familiar</label>
+                <input type="password" id="clave" placeholder="Se guarda en este navegador" autocomplete="current-password" required>
+            </div>
+
+            <div class="form-group">
                 <label for="titulo">Título del Proyecto</label>
-                <input type="text" id="titulo" placeholder="Ej: El misterio de la ciudad perdida" required>
+                <input type="text" id="titulo" placeholder="Ej: El misterio de la ciudad perdida" maxlength="150" required>
             </div>
 
             <div class="form-group">
@@ -83,83 +119,235 @@
             </div>
 
             <div class="form-group">
-                <label for="nicho">Nicho Visual</label>
-                <select id="nicho">
-                    <option value="misterio">Misterio (Oscuro, Cinematográfico)</option>
-                    <option value="historia">Historia (Óleo, Clásico)</option>
-                    <option value="ciencia">Ciencia (Nítido, Iluminado)</option>
-                </select>
+                <label for="canal">Canal de destino</label>
+                <select id="canal"><option>Cargando canales...</option></select>
+                <div class="hint">Cada canal tiene su propio tema, voz y estilo visual. No se mezclan.</div>
             </div>
 
             <div class="form-group">
-                <label>Duración Objetivo (Minutos)</label>
+                <label>Duración objetivo (minutos)</label>
                 <div class="slider-container">
                     <input type="range" id="duracion" min="1" max="60" value="10" oninput="updateVal('duracionVal', this.value)">
                     <span class="val-display" id="duracionVal">10 min</span>
                 </div>
+                <div class="hint">Más duración = más tiempo de producción y más gasto en guion.</div>
             </div>
 
             <div class="form-group">
-                <label>Cantidad de Shorts Extra</label>
+                <label>Cantidad de Shorts extra</label>
                 <div class="slider-container">
                     <input type="range" id="shorts" min="0" max="10" value="3" oninput="updateVal('shortsVal', this.value)">
                     <span class="val-display" id="shortsVal">3</span>
                 </div>
             </div>
 
-            <button type="submit" class="submit-btn" id="btnSubmit">Añadir a la Cola de Renderizado</button>
+            <button type="submit" class="submit-btn" id="btnSubmit">Añadir a la Cola de Producción</button>
             <div id="statusMsg" class="status"></div>
         </form>
     </div>
 
+    <div class="dashboard-card">
+        <div class="list-title">
+            <h2>Proyectos recientes</h2>
+            <button class="link-btn" id="btnActualizar" type="button">Actualizar</button>
+        </div>
+        <div id="listaProyectos"><div class="vacio">Escribe la clave para ver los proyectos.</div></div>
+    </div>
+
     <script>
+        const $ = (id) => document.getElementById(id);
+        const ETIQUETAS = { pendiente: 'En cola', produciendo: 'Produciendo', listo: 'Listo', error: 'Error' };
+        let canales = [];
+
+        function leerClave() { try { return localStorage.getItem('clave_familia') || ''; } catch (e) { return ''; } }
+        function guardarClave(v) { try { localStorage.setItem('clave_familia', v); } catch (e) { /* sin almacenamiento */ } }
+
         function updateVal(elementId, value) {
             const suffix = elementId === 'duracionVal' ? ' min' : '';
-            document.getElementById(elementId).innerText = value + suffix;
+            $(elementId).innerText = value + suffix;
         }
 
-        document.getElementById('produccionForm').addEventListener('submit', async (e) => {
+        function mostrar(texto, tipo) {
+            const s = $('statusMsg');
+            s.innerText = texto;
+            s.className = 'status ' + tipo;
+        }
+
+        function nombreCanal(id) {
+            const c = canales.find(x => x.id === id);
+            return c ? c.nombre : id;
+        }
+
+        async function cargarCanales() {
+            mostrar('Conectando con el servidor (puede tardar hasta un minuto si estaba dormido)...', 'info');
+            try {
+                const r = await fetch('/api/canales');
+                canales = await r.json();
+                const sel = $('canal');
+                sel.innerHTML = '';
+                canales.forEach(c => {
+                    const o = document.createElement('option');
+                    o.value = c.id;
+                    o.textContent = c.nombre;
+                    sel.appendChild(o);
+                });
+                $('statusMsg').className = 'status';
+            } catch (e) {
+                mostrar('No se pudieron cargar los canales. Recarga la página.', 'error');
+            }
+        }
+
+        function crearFila(p) {
+            const fila = document.createElement('div');
+            fila.className = 'proyecto';
+
+            const cab = document.createElement('div');
+            cab.className = 'proyecto-cab';
+            const titulo = document.createElement('strong');
+            titulo.textContent = p.titulo;
+            const badge = document.createElement('span');
+            badge.className = 'badge ' + p.estado;
+            badge.textContent = ETIQUETAS[p.estado] || p.estado;
+            cab.appendChild(titulo);
+            cab.appendChild(badge);
+            fila.appendChild(cab);
+
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            const fecha = new Date(p.creado).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+            meta.textContent = nombreCanal(p.canal) + ' · ' + p.duracion + ' min · ' + p.shorts + ' shorts · ' + fecha;
+            fila.appendChild(meta);
+
+            if (p.estado === 'produciendo') {
+                const barra = document.createElement('div');
+                barra.className = 'barra';
+                const relleno = document.createElement('div');
+                relleno.className = 'relleno';
+                relleno.style.width = (p.progreso || 0) + '%';
+                barra.appendChild(relleno);
+                fila.appendChild(barra);
+            }
+
+            if (p.mensaje) {
+                const m = document.createElement('div');
+                m.className = 'mensaje';
+                m.textContent = p.mensaje;
+                fila.appendChild(m);
+            }
+
+            if (p.estado === 'listo' && p.titulo_youtube) {
+                const t = document.createElement('div');
+                t.className = 'mensaje';
+                t.textContent = 'Título sugerido: ' + p.titulo_youtube;
+                fila.appendChild(t);
+            }
+
+            const acciones = document.createElement('div');
+            acciones.className = 'acciones';
+            if (p.estado === 'listo' && /^https?:\/\//.test(p.drive_url || '')) {
+                const a = document.createElement('a');
+                a.href = p.drive_url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                a.textContent = 'Abrir carpeta en Drive';
+                acciones.appendChild(a);
+            }
+            if (p.estado === 'error') {
+                const b = document.createElement('button');
+                b.className = 'link-btn';
+                b.type = 'button';
+                b.textContent = 'Reintentar';
+                b.onclick = () => reintentar(p.id);
+                acciones.appendChild(b);
+            }
+            if (acciones.children.length) fila.appendChild(acciones);
+
+            return fila;
+        }
+
+        async function cargarProyectos() {
+            const clave = leerClave();
+            const cont = $('listaProyectos');
+            if (!clave) {
+                cont.innerHTML = '<div class="vacio">Escribe la clave para ver los proyectos.</div>';
+                return;
+            }
+            try {
+                const r = await fetch('/api/proyectos', { headers: { 'x-clave': clave } });
+                if (r.status === 401) {
+                    cont.innerHTML = '<div class="vacio">Clave incorrecta.</div>';
+                    return;
+                }
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const lista = await r.json();
+                cont.innerHTML = '';
+                if (lista.length === 0) {
+                    cont.innerHTML = '<div class="vacio">Todavía no hay proyectos.</div>';
+                    return;
+                }
+                lista.forEach(p => cont.appendChild(crearFila(p)));
+            } catch (e) {
+                cont.innerHTML = '<div class="vacio">No se pudo cargar la lista.</div>';
+            }
+        }
+
+        async function reintentar(id) {
+            try {
+                await fetch('/api/reintentar/' + id, { method: 'POST', headers: { 'x-clave': leerClave() } });
+            } finally {
+                cargarProyectos();
+            }
+        }
+
+        $('produccionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('btnSubmit');
-            const status = document.getElementById('statusMsg');
-            
+            const btn = $('btnSubmit');
+            const clave = $('clave').value.trim();
+
             btn.innerText = 'Enviando...';
             btn.disabled = true;
-            status.className = 'status';
+            $('statusMsg').className = 'status';
 
             const payload = {
-                titulo: document.getElementById('titulo').value,
-                url: document.getElementById('url').value,
-                nicho: document.getElementById('nicho').value,
-                duracion: parseInt(document.getElementById('duracion').value),
-                shorts: parseInt(document.getElementById('shorts').value)
+                titulo: $('titulo').value,
+                url: $('url').value,
+                canal: $('canal').value,
+                duracion: parseInt($('duracion').value, 10),
+                shorts: parseInt($('shorts').value, 10)
             };
 
             try {
-                // Reemplaza con la URL real de tu API en Render o servidor local
-                const response = await fetch('https://tu-api.onrender.com/api/encolar', {
+                const response = await fetch('/api/nuevo-video', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'x-clave': clave },
                     body: JSON.stringify(payload)
                 });
+                const datos = await response.json().catch(() => ({}));
 
                 if (response.ok) {
-                    status.innerText = '¡Proyecto añadido exitosamente a la cola!';
-                    status.className = 'status success';
-                    document.getElementById('produccionForm').reset();
-                    updateVal('duracionVal', '10');
-                    updateVal('shortsVal', '3');
+                    guardarClave(clave);
+                    mostrar(datos.mensaje || '¡Proyecto añadido a la cola!', 'success');
+                    $('titulo').value = '';
+                    $('url').value = '';
+                    cargarProyectos();
+                } else if (response.status === 401) {
+                    mostrar('Clave incorrecta.', 'error');
                 } else {
-                    throw new Error('Error en el servidor');
+                    mostrar(datos.error || 'Error en el servidor.', 'error');
                 }
             } catch (error) {
-                status.innerText = 'Error al conectar con la base de datos.';
-                status.className = 'status error';
+                mostrar('No se pudo conectar con el servidor.', 'error');
             } finally {
-                btn.innerText = 'Añadir a la Cola de Renderizado';
+                btn.innerText = 'Añadir a la Cola de Producción';
                 btn.disabled = false;
             }
         });
+
+        $('btnActualizar').addEventListener('click', cargarProyectos);
+
+        $('clave').value = leerClave();
+        cargarCanales().then(cargarProyectos);
+        setInterval(() => { if (leerClave()) cargarProyectos(); }, 15000);
     </script>
 </body>
 </html>
