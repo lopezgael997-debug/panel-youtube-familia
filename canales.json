@@ -1,0 +1,5 @@
+[
+  { "id": "misterio", "nombre": "Enigmas del Pasado", "nicho": "misterio" },
+  { "id": "historia", "nombre": "Crónicas de la Historia", "nicho": "historia" },
+  { "id": "ciencia", "nombre": "Ciencia al Descubierto", "nicho": "ciencia" }
+]
